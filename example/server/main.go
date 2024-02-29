@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
 
 	"github.com/duxthemux/chmux"
 )
@@ -14,6 +13,7 @@ import (
 var mux *chmux.Mux[[]byte]
 
 func handleConn(ctx context.Context, c net.Conn) {
+
 	go func() {
 		<-ctx.Done()
 		_ = c.Close()
@@ -27,17 +27,25 @@ func handleConn(ctx context.Context, c net.Conn) {
 			if !ok {
 				return
 			}
-			c.Write(bs)
-			c.Write([]byte("\n"))
+			_, err := c.Write(bs)
+			if err != nil {
+				slog.Warn("could not write to con", "err", err)
+				return
+			}
+			_, err = c.Write([]byte("\n"))
+			if err != nil {
+				slog.Warn("could not write to con", "err", err)
+				return
+			}
 		}
 	}()
 
 	go func() {
 		scanner := bufio.NewScanner(c)
 		for scanner.Scan() {
-			txt := scanner.Bytes()
-			mux.Send(txt)
-			os.Stdout.WriteString(fmt.Sprintf("%s: %s", c.RemoteAddr().String()))
+			txt := scanner.Text()
+			pl := fmt.Sprintf("%s: %s", c.RemoteAddr().String(), txt)
+			mux.Send([]byte(pl))
 		}
 	}()
 
@@ -66,8 +74,6 @@ func run(ctx context.Context) error {
 
 		go handleConn(ctx, c)
 	}
-
-	return nil
 }
 
 func main() {
